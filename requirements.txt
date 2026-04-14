@@ -1,0 +1,11 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+pandas
+numpy
+scikit-learn
+matplotlib
+seaborn
+plotly
+streamlit
+xgboost
+joblib

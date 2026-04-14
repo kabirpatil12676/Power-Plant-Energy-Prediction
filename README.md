@@ -1,5 +1,7 @@
 # Power Plant Energy Prediction
 
+**Live Demo:** [https://power-plant-energy-prediction.streamlit.app/](https://power-plant-energy-prediction.streamlit.app/)
+
 A comprehensive end-to-end Deep Learning regression project. This repository contains the data pipeline, an Artificial Neural Network (built with PyTorch), classical machine learning models for comparison, and an interactive web dashboard for real-time inference.
 
 ## Overview

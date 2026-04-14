@@ -339,15 +339,16 @@ header    { visibility: hidden; }
 class PowerPlantANN(nn.Module):
     def __init__(self, input_dim=4):
         super(PowerPlantANN, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(input_dim, 128), nn.BatchNorm1d(128), nn.ReLU(), nn.Dropout(0.2),
-            nn.Linear(128, 64),        nn.BatchNorm1d(64),  nn.ReLU(), nn.Dropout(0.2),
-            nn.Linear(64, 32),         nn.ReLU(),
+        self.network = nn.Sequential(
+            nn.Linear(input_dim, 256), nn.BatchNorm1d(256), nn.LeakyReLU(), nn.Dropout(0.15),
+            nn.Linear(256, 128),       nn.BatchNorm1d(128), nn.LeakyReLU(), nn.Dropout(0.15),
+            nn.Linear(128, 64),        nn.BatchNorm1d(64),  nn.LeakyReLU(), nn.Dropout(0.15),
+            nn.Linear(64, 32),         nn.BatchNorm1d(32),  nn.LeakyReLU(), nn.Dropout(0.15),
             nn.Linear(32, 1),
         )
 
     def forward(self, x):
-        return self.model(x)
+        return self.network(x)
 
 
 # ── Cached Loaders ────────────────────────────────────────────────────────────
@@ -828,8 +829,8 @@ Output Layer    : Linear(32 → 1) — Energy Output (MW)
 ────────────────────────────────────────
 Total Parameters  : {arch.get("total_params", 0):,}
 Optimizer         : {arch.get("optimizer", "Adam")} (lr={arch.get("learning_rate", 0.001)})
-LR Scheduler      : ReduceLROnPlateau (factor=0.5, patience=10)
-Early Stopping    : patience=20
+LR Scheduler      : ReduceLROnPlateau (factor=0.3, patience=15)
+Early Stopping    : patience=50
 Best Epoch        : {arch.get("best_epoch", "N/A")}
 """, language="text")
 

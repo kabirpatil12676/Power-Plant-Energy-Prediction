@@ -206,7 +206,7 @@ scheduler = optim.lr_scheduler.ReduceLROnPlateau(
 )
 
 print(f"[TRAIN] Training for up to {EPOCHS} epochs (Early Stopping patience={PATIENCE})...")
-print(f"   Optimizer: Adam (lr={LEARNING_RATE}, weight_decay=1e-4)")
+print(f"   Optimizer: Adam (lr={LEARNING_RATE}, weight_decay=1e-5)")
 print(f"   Scheduler: ReduceLROnPlateau (factor=0.3, patience=15)")
 print(f"{'-'*60}")
 

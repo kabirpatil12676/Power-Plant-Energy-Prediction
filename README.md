@@ -83,7 +83,7 @@ The solution evaluates the mean continuous output on out-of-sample test datasets
 
 - **XGBoost**: R2 Score = ~0.97, MAPE = ~0.50%
 - **Random Forest**: R2 Score = ~0.96, MAPE = ~0.51%
-- **ANN (PyTorch)**: R2 ≈ 0.95+, RMSE ≈ 3.5 MW, MAPE ≈ 0.60%. Solid baseline established; robust against outlier perturbations due to dropout regularization.
+- **ANN (PyTorch)**: R2 ≈ 0.91, RMSE ≈ 5.27 MW, MAPE ≈ 0.83%. Solid baseline established; robust against outlier perturbations. Tree-based models inherently leverage tabular correlations better, leaving room for future hyperparameter sweeps.
 
 With an average Root Mean Squared Error (RMSE) of ~3 MW on an average net output of ~454 MW, the top models exhibit less than a 1% relative margin of error.
 

@@ -339,7 +339,7 @@ header    { visibility: hidden; }
 class PowerPlantANN(nn.Module):
     def __init__(self, input_dim=4):
         super(PowerPlantANN, self).__init__()
-        self.network = nn.Sequential(
+        self.model = nn.Sequential(
             nn.Linear(input_dim, 256), nn.BatchNorm1d(256), nn.LeakyReLU(), nn.Dropout(0.15),
             nn.Linear(256, 128),       nn.BatchNorm1d(128), nn.LeakyReLU(), nn.Dropout(0.15),
             nn.Linear(128, 64),        nn.BatchNorm1d(64),  nn.LeakyReLU(), nn.Dropout(0.15),
@@ -348,7 +348,7 @@ class PowerPlantANN(nn.Module):
         )
 
     def forward(self, x):
-        return self.network(x)
+        return self.model(x)
 
 
 # ── Cached Loaders ────────────────────────────────────────────────────────────
@@ -473,7 +473,7 @@ def main():
             ("Parameters", f"{ann_cfg['total_params']:,}"),
             ("Best Epoch", str(ann_cfg["best_epoch"])),
             ("Optimizer",  ann_cfg.get("optimizer", "Adam")),
-            ("Device",     "GPU (CUDA)"),
+            ("Device",     "CPU (Streamlit)"),
         ]
         for k, v_val in rows:
             st.markdown(
@@ -830,7 +830,7 @@ Output Layer    : Linear(32 → 1) — Energy Output (MW)
 Total Parameters  : {arch.get("total_params", 0):,}
 Optimizer         : {arch.get("optimizer", "Adam")} (lr={arch.get("learning_rate", 0.001)})
 LR Scheduler      : ReduceLROnPlateau (factor=0.3, patience=15)
-Early Stopping    : patience=50
+Early Stopping    : patience=30
 Best Epoch        : {arch.get("best_epoch", "N/A")}
 """, language="text")
 

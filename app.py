@@ -339,7 +339,7 @@ header    { visibility: hidden; }
 class PowerPlantANN(nn.Module):
     def __init__(self, input_dim=4):
         super(PowerPlantANN, self).__init__()
-        self.model = nn.Sequential(
+        self.network = nn.Sequential(
             nn.Linear(input_dim, 256), nn.BatchNorm1d(256), nn.LeakyReLU(), nn.Dropout(0.15),
             nn.Linear(256, 128),       nn.BatchNorm1d(128), nn.LeakyReLU(), nn.Dropout(0.15),
             nn.Linear(128, 64),        nn.BatchNorm1d(64),  nn.LeakyReLU(), nn.Dropout(0.15),
@@ -348,7 +348,7 @@ class PowerPlantANN(nn.Module):
         )
 
     def forward(self, x):
-        return self.model(x)
+        return self.network(x)
 
 
 # ── Cached Loaders ────────────────────────────────────────────────────────────

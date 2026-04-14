@@ -157,7 +157,7 @@ class PowerPlantANN(nn.Module):
 
     def __init__(self, input_dim=4):
         super(PowerPlantANN, self).__init__()
-        self.model = nn.Sequential(
+        self.network = nn.Sequential(
             # Hidden Layer 1
             nn.Linear(input_dim, 256),
             nn.BatchNorm1d(256),
@@ -183,7 +183,7 @@ class PowerPlantANN(nn.Module):
         )
 
     def forward(self, x):
-        return self.model(x)
+        return self.network(x)
 
 
 # =============================================================================

@@ -26,6 +26,7 @@ from sklearn.svm import SVR
 from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
 import joblib
+import shap
 
 warnings.filterwarnings("ignore")
 
@@ -40,10 +41,10 @@ if torch.cuda.is_available():
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 DATA_PATH = "powerplant_data.csv"
 MODEL_DIR = "models"
-EPOCHS = 300
+EPOCHS = 500
 BATCH_SIZE = 64
 LEARNING_RATE = 0.001
-PATIENCE = 20  # Early stopping patience
+PATIENCE = 30  # Early stopping patience
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 
@@ -152,35 +153,31 @@ print()
 class PowerPlantANN(nn.Module):
     """
     Deep Artificial Neural Network for Power Plant Energy Prediction.
-
-    Architecture:
-        Input (4) -> Linear(128) -> BatchNorm -> ReLU -> Dropout(0.2)
-                   -> Linear(64)  -> BatchNorm -> ReLU -> Dropout(0.2)
-                   -> Linear(32)  -> ReLU
-                   -> Linear(1)   -> Output
-
-    Key Design Decisions:
-        - BatchNorm: Stabilizes training, enables higher learning rates
-        - Dropout: Prevents overfitting on small dataset
-        - Gradual width reduction: Learns hierarchical feature representations
     """
 
     def __init__(self, input_dim=4):
         super(PowerPlantANN, self).__init__()
         self.model = nn.Sequential(
             # Hidden Layer 1
-            nn.Linear(input_dim, 128),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Dropout(0.2),
+            nn.Linear(input_dim, 256),
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(),
+            nn.Dropout(0.15),
             # Hidden Layer 2
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
+            nn.LeakyReLU(),
+            nn.Dropout(0.15),
+            # Hidden Layer 3
             nn.Linear(128, 64),
             nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            # Hidden Layer 3
+            nn.LeakyReLU(),
+            nn.Dropout(0.15),
+            # Hidden Layer 4
             nn.Linear(64, 32),
-            nn.ReLU(),
+            nn.BatchNorm1d(32),
+            nn.LeakyReLU(),
+            nn.Dropout(0.15),
             # Output Layer
             nn.Linear(32, 1),
         )
@@ -197,20 +194,20 @@ model = PowerPlantANN(input_dim=X_train.shape[1]).to(DEVICE)
 
 total_params = sum(p.numel() for p in model.parameters())
 trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"   Architecture: 4 -> 128 -> 64 -> 32 -> 1")
+print(f"   Architecture: 4 -> 256 -> 128 -> 64 -> 32 -> 1")
 print(f"   Total Parameters: {total_params:,}")
 print(f"   Trainable Parameters: {trainable_params:,}")
 print()
 
 criterion = nn.MSELoss()
-optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
+optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4) # Fixed L2 weight decay
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, mode="min", factor=0.5, patience=10
+    optimizer, mode="min", factor=0.3, patience=15
 )
 
 print(f"[TRAIN] Training for up to {EPOCHS} epochs (Early Stopping patience={PATIENCE})...")
-print(f"   Optimizer: Adam (lr={LEARNING_RATE}, weight_decay=1e-5)")
-print(f"   Scheduler: ReduceLROnPlateau (factor=0.5, patience=10)")
+print(f"   Optimizer: Adam (lr={LEARNING_RATE}, weight_decay=1e-4)")
+print(f"   Scheduler: ReduceLROnPlateau (factor=0.3, patience=15)")
 print(f"{'-'*60}")
 
 train_losses = []
@@ -230,6 +227,7 @@ for epoch in range(EPOCHS):
         outputs = model(xb)
         loss = criterion(outputs, yb)
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         running_loss += loss.item()
 
@@ -387,6 +385,13 @@ results["XGBoost"] = {
 }
 print(f"      R2: {results['XGBoost']['R2']}")
 
+# -- SHAP Feature Importance (XGBoost) --
+print("   -> Computing SHAP Values for XGBoost...")
+explainer = shap.TreeExplainer(model_xgb)
+shap_values = explainer.shap_values(X_test)
+mean_abs_shap = np.abs(shap_values).mean(axis=0)
+shap_importance = dict(zip(FEATURE_NAMES, mean_abs_shap.round(4).tolist()))
+
 # -- Feature Importance (from Random Forest) --
 feature_importance = dict(
     zip(FEATURE_NAMES, model_rf.feature_importances_.round(4).tolist())
@@ -420,7 +425,7 @@ metadata = {
     },
     "feature_ranges": FEATURE_RANGES,
     "ann_config": {
-        "architecture": "4 -> 128 -> BN -> ReLU -> D(0.2) -> 64 -> BN -> ReLU -> D(0.2) -> 32 -> ReLU -> 1",
+        "architecture": "4 -> 256 -> BN -> LReLU -> D(0.15) -> 128 -> BN -> LReLU -> D(0.15) -> 64 -> BN -> LReLU -> D(0.15) -> 32 -> BN -> LReLU -> D(0.15) -> 1",
         "optimizer": "Adam",
         "learning_rate": LEARNING_RATE,
         "batch_size": BATCH_SIZE,
@@ -429,6 +434,7 @@ metadata = {
     },
     "model_results": results,
     "feature_importance": feature_importance,
+    "shap_importance": shap_importance,
     "training_history": {
         "train_losses": [round(l, 4) for l in train_losses],
         "val_losses": [round(l, 4) for l in val_losses],

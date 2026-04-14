@@ -15,10 +15,14 @@ The goal of this project is to predict the net hourly electrical energy output (
 
 This solution demonstrates a full machine learning lifecycle, from exploratory data analysis to model building, architectural optimization, and production deployment using Streamlit.
 
+**Author:** Kabir Patil  
+**Portfolio:** [GitHub](https://github.com/kabirpatil12676)
+
 ## Features
 
 - **Deep Learning Pipeline**: A custom-architected Artificial Neural Network (ANN) using PyTorch, featuring Batch Normalization, Dropout regularization, and the Adam optimizer with a learning rate scheduler (ReduceLROnPlateau).
 - **Model Comparison**: Evaluation of the PyTorch ANN against classical machine learning algorithms, including Random Forest, Support Vector Regression (SVR), and XGBoost.
+- **Explainability**: SHAP value analysis (TreeExplainer) for XGBoost model interpretability with beeswarm, bar, and waterfall plots.
 - **Interactive Dashboard**: A modern, dark-themed Streamlit application that allows users to adjust ambient feature inputs in real-time and view the predictive output. The dashboard also includes thorough data visualizations (correlation matrices, distributions, residual analytics) powered by Plotly.
 - **Clean Architecture**: Modular code separation for modeling, training, and the web application.
 
@@ -41,8 +45,8 @@ This solution demonstrates a full machine learning lifecycle, from exploratory d
 
 **1. Clone the repository**
 ```bash
-git clone https://github.com/yourusername/power-plant-energy-prediction.git
-cd power-plant-energy-prediction
+git clone https://github.com/kabirpatil12676/Power-Plant-Energy-Prediction.git
+cd Power-Plant-Energy-Prediction
 ```
 
 **2. Create a virtual environment (optional but recommended)**
@@ -55,6 +59,7 @@ source venv/bin/activate  # On Windows use: venv\Scripts\activate
 ```bash
 pip install -r requirements.txt
 ```
+*Note: Make sure your environment supports all necessary packages including: torch, streamlit, plotly, xgboost, shap, scikit-learn, joblib, pandas, numpy, matplotlib, seaborn.*
 
 ## Usage
 
@@ -78,7 +83,7 @@ The solution evaluates the mean continuous output on out-of-sample test datasets
 
 - **XGBoost**: R2 Score = ~0.97, MAPE = ~0.50%
 - **Random Forest**: R2 Score = ~0.96, MAPE = ~0.51%
-- **ANN (PyTorch)**: Solid baseline established; robust against outlier perturbations due to dropout regularization.
+- **ANN (PyTorch)**: R2 ≈ 0.95+, RMSE ≈ 3.5 MW, MAPE ≈ 0.60%. Solid baseline established; robust against outlier perturbations due to dropout regularization.
 
 With an average Root Mean Squared Error (RMSE) of ~3 MW on an average net output of ~454 MW, the top models exhibit less than a 1% relative margin of error.
 

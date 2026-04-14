@@ -1,0 +1,633 @@
+# Power Plant Energy Output Prediction
+### End-to-End Deep Learning Project with PyTorch
+
+---
+
+**Dataset:** UCI Combined Cycle Power Plant Dataset  
+**Task:** Regression — Predict net hourly electrical energy output (PE) in megawatts  
+**Author:** Kabir Patil  
+
+---
+
+## Problem Statement
+
+A Combined Cycle Power Plant (CCPP) operates by combining gas and steam turbines to generate electricity. The net hourly energy output of the plant is influenced by four ambient variables:
+
+| Feature | Symbol | Description | Unit |
+|---------|--------|-------------|------|
+| Temperature | AT | Ambient Temperature | °C |
+| Exhaust Vacuum | V | Vacuum at steam turbine exhaust | cmHg |
+| Ambient Pressure | AP | Atmospheric pressure | mbar |
+| Relative Humidity | RH | Moisture content of air | % |
+| **Energy Output** | **PE** | **Net hourly electrical energy output** | **MW** |
+
+**Goal:** Build an Artificial Neural Network (ANN) and compare it with classical ML models to predict PE accurately.
+
+---
+
+## Project Architecture
+
+```
+1. Data Loading & Quality Check
+2. Exploratory Data Analysis (EDA)
+3. Data Preprocessing & Train/Val/Test Split
+4. ANN Model (PyTorch) — Training, Evaluation, Visualization
+5. ML Model Comparison — Linear Regression, SVR, Random Forest, XGBoost
+10. SHAP Explainability — XGBoost Model Interpretation
+11. Final Results & Business Insights
+```
+---
+## Section 1: Imports & Configuration
+# ── Core Libraries ────────────────────────────────────────────────────────────
+import os
+import warnings
+import numpy as np
+import pandas as pd
+
+# ── Visualization ─────────────────────────────────────────────────────────────
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import seaborn as sns
+
+# ── PyTorch Deep Learning ─────────────────────────────────────────────────────
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
+
+# ── Scikit-Learn ──────────────────────────────────────────────────────────────
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
+from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVR
+from sklearn.ensemble import RandomForestRegressor
+
+# ── XGBoost ───────────────────────────────────────────────────────────────────
+from xgboost import XGBRegressor
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+warnings.filterwarnings('ignore')
+SEED = 42
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(f'Device: {DEVICE}')
+
+# Plot style
+plt.rcParams['figure.facecolor'] = '#0d1117'
+plt.rcParams['axes.facecolor']   = '#161b22'
+plt.rcParams['axes.edgecolor']   = '#30363d'
+plt.rcParams['axes.labelcolor']  = '#c9d1d9'
+plt.rcParams['xtick.color']      = '#8b949e'
+plt.rcParams['ytick.color']      = '#8b949e'
+plt.rcParams['text.color']       = '#c9d1d9'
+plt.rcParams['grid.color']       = '#21262d'
+plt.rcParams['font.family']      = 'DejaVu Sans'
+
+ACCENT = '#6366f1'   # indigo
+ACCENT2 = '#a78bfa'  # violet
+PALETTE = ['#6366f1', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#60a5fa']
+
+print('All libraries loaded successfully.')
+---
+## Section 2: Data Loading & Quality Check
+# Load dataset
+df_raw = pd.read_csv('powerplant_data.csv')
+
+print('=== Dataset Overview ===')
+print(f'Shape            : {df_raw.shape}')
+print(f'Columns          : {list(df_raw.columns)}')
+print(f'Missing values   : {df_raw.isnull().sum().sum()}')
+print(f'Duplicate rows   : {df_raw.duplicated().sum()}')
+print()
+
+# Remove duplicates
+df = df_raw.drop_duplicates()
+print(f'Shape after dedup: {df.shape}')
+print()
+df.head()
+# Statistical summary
+print('=== Descriptive Statistics ===')
+df.describe().round(3)
+# Data types and info
+df.info()
+---
+## Section 3: Exploratory Data Analysis
+
+Visualizing patterns, correlations, and distributions to understand the data before modeling.
+# Feature Distributions with KDE
+fig, axes = plt.subplots(1, 5, figsize=(18, 4))
+fig.suptitle('Feature Distributions', fontsize=14, fontweight='bold', color='white', y=1.02)
+
+for i, col in enumerate(df.columns):
+    ax = axes[i]
+    ax.hist(df[col], bins=40, color=PALETTE[i], alpha=0.8, edgecolor='none')
+    ax.axvline(df[col].mean(), color='white', linestyle='--', linewidth=1.2, alpha=0.7, label=f'Mean: {df[col].mean():.1f}')
+    ax.set_title(col, fontsize=11, fontweight='bold')
+    ax.set_xlabel('Value')
+    ax.set_ylabel('Count')
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('assets/eda_distributions.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')
+plt.show()
+# Correlation Heatmap
+corr = df.corr()
+
+fig, ax = plt.subplots(figsize=(8, 6))
+mask = np.zeros_like(corr, dtype=bool)
+
+cmap = sns.diverging_palette(240, 10, as_cmap=True)
+sns.heatmap(
+    corr, annot=True, fmt='.2f', cmap=cmap,
+    center=0, vmin=-1, vmax=1,
+    square=True, ax=ax,
+    annot_kws={'size': 12, 'fontweight': 'bold'},
+    linewidths=0.5, linecolor='#21262d',
+    cbar_kws={'label': 'Pearson r'}
+)
+
+ax.set_title('Pearson Correlation Matrix', fontsize=14, fontweight='bold', pad=15)
+plt.tight_layout()
+plt.savefig('assets/eda_correlation.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')
+plt.show()
+
+print('Top correlations with PE (Target):')
+print(corr['PE'].sort_values(ascending=False).drop('PE'))
+# Feature vs Target Scatter Plots
+features = ['AT', 'V', 'AP', 'RH']
+labels   = ['Temperature (°C)', 'Exhaust Vacuum (cmHg)', 'Ambient Pressure (mbar)', 'Relative Humidity (%)']
+
+fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+fig.suptitle('Feature vs Energy Output (PE) — Scatter with Trend Line', fontsize=14, fontweight='bold', y=1.01)
+axes = axes.flatten()
+
+for i, (feat, label) in enumerate(zip(features, labels)):
+    ax = axes[i]
+    ax.scatter(df[feat], df['PE'], alpha=0.25, s=6, color=PALETTE[i])
+    
+    # Add trend line
+    z = np.polyfit(df[feat], df['PE'], 1)
+    p = np.poly1d(z)
+    xs = np.linspace(df[feat].min(), df[feat].max(), 200)
+    ax.plot(xs, p(xs), color='white', linewidth=1.8, linestyle='--', alpha=0.7)
+    
+    # Correlation
+    r = df['PE'].corr(df[feat])
+    ax.set_title(f'{label}  (r = {r:.3f})', fontsize=11, fontweight='bold')
+    ax.set_xlabel(label)
+    ax.set_ylabel('Energy Output PE (MW)')
+    ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('assets/eda_scatter.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')
+plt.show()
+# Box Plots — Outlier Detection
+fig, axes = plt.subplots(1, 5, figsize=(18, 5))
+fig.suptitle('Box Plots — Outlier Detection', fontsize=14, fontweight='bold')
+
+for i, col in enumerate(df.columns):
+    ax = axes[i]
+    bp = ax.boxplot(
+        df[col], patch_artist=True,
+        boxprops=dict(facecolor=PALETTE[i], color=PALETTE[i], alpha=0.7),
+        medianprops=dict(color='white', linewidth=2),
+        whiskerprops=dict(color=PALETTE[i], alpha=0.7),
+        capprops=dict(color=PALETTE[i], alpha=0.7),
+        flierprops=dict(marker='o', color=PALETTE[i], markersize=3, alpha=0.4),
+    )
+    ax.set_title(col, fontweight='bold')
+    ax.set_xlabel('')
+    ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('assets/eda_boxplots.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')
+plt.show()
+---
+## Section 4: Data Preprocessing
+
+- **Split:** 70% Train / 15% Validation / 15% Test (stratified random split, seed=42)
+- **Scale:** StandardScaler fitted on training data only — prevents data leakage
+- **Tensors:** Convert to PyTorch tensors and create DataLoaders with batch size 64
+# ── Split ─────────────────────────────────────────────────────────────────────
+X = df.drop('PE', axis=1)
+y = df['PE']
+
+# 70% train, 30% temp
+X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.30, random_state=SEED)
+# 50% of temp = 15% val, 15% test
+X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.50, random_state=SEED)
+
+print(f'Train size : {X_train.shape[0]:,} samples ({X_train.shape[0]/len(df)*100:.0f}%)')
+print(f'Val size   : {X_val.shape[0]:,} samples ({X_val.shape[0]/len(df)*100:.0f}%)')
+print(f'Test size  : {X_test.shape[0]:,} samples ({X_test.shape[0]/len(df)*100:.0f}%)')
+
+# ── Scale ─────────────────────────────────────────────────────────────────────
+scaler = StandardScaler()
+X_train_s = scaler.fit_transform(X_train)  # fit ONLY on train
+X_val_s   = scaler.transform(X_val)
+X_test_s  = scaler.transform(X_test)
+
+print(f'\nFeature means (train): {scaler.mean_.round(2)}')
+print(f'Feature stds  (train): {scaler.scale_.round(2)}')
+
+# ── PyTorch Tensors ───────────────────────────────────────────────────────────
+def to_tensors(X, y):
+    return (
+        torch.tensor(X, dtype=torch.float32),
+        torch.tensor(y.values, dtype=torch.float32).view(-1, 1)
+    )
+
+X_train_t, y_train_t = to_tensors(X_train_s, y_train)
+X_val_t,   y_val_t   = to_tensors(X_val_s,   y_val)
+X_test_t,  y_test_t  = to_tensors(X_test_s,  y_test)
+
+BATCH = 64
+train_loader = DataLoader(TensorDataset(X_train_t, y_train_t), batch_size=BATCH, shuffle=True)
+val_loader   = DataLoader(TensorDataset(X_val_t,   y_val_t),   batch_size=BATCH)
+test_loader  = DataLoader(TensorDataset(X_test_t,  y_test_t),  batch_size=BATCH)
+
+print(f'\nDataLoader — Train batches: {len(train_loader)}, Val: {len(val_loader)}, Test: {len(test_loader)}')
+---
+## Section 5: ANN Model Architecture
+
+```
+PowerPlantANN
+  Input (4 features)
+    |
+    +- Linear(4, 128) -> BatchNorm1d(128) -> ReLU -> Dropout(0.2)
+    +- Linear(128, 64) -> BatchNorm1d(64) -> ReLU -> Dropout(0.2)
+    +- Linear(64, 32) -> ReLU
+    +- Linear(32, 1) -> Output (PE in MW)
+```
+
+**Design Choices:**
+- **BatchNorm:** Stabilizes training, allows higher learning rates, reduces internal covariate shift
+- **Dropout (0.2):** Prevents overfitting by randomly zeroing 20% of neurons during training
+- **Decreasing width (128 -> 64 -> 32):** Encourages hierarchical feature learning
+- **Adam optimizer:** Adaptive learning rates with momentum, well-suited for regression
+- **ReduceLROnPlateau:** Halves LR when val loss plateaus — enables fine-tuned convergence
+- **Early Stopping (patience=20):** Prevents overtraining, saves best checkpoint
+class PowerPlantANN(nn.Module):
+    """
+    Deep ANN for power plant energy regression.
+    Architecture: 4 -> 256 -> 128 -> 64 -> 32 -> 1
+    Uses BatchNorm + LeakyReLU + Dropout for regularization.
+    """
+    def __init__(self, input_dim=4):
+        super(PowerPlantANN, self).__init__()
+        self.network = nn.Sequential(
+            # Hidden Layer 1
+            nn.Linear(input_dim, 256),
+            nn.BatchNorm1d(256),
+            nn.LeakyReLU(),
+            nn.Dropout(p=0.15),
+            # Hidden Layer 2
+            nn.Linear(256, 128),
+            nn.BatchNorm1d(128),
+            nn.LeakyReLU(),
+            nn.Dropout(p=0.15),
+            # Hidden Layer 3
+            nn.Linear(128, 64),
+            nn.BatchNorm1d(64),
+            nn.LeakyReLU(),
+            nn.Dropout(p=0.15),
+            # Hidden Layer 4
+            nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
+            nn.LeakyReLU(),
+            nn.Dropout(p=0.15),
+            # Output Layer
+            nn.Linear(32, 1),
+        )
+
+    def forward(self, x):
+        return self.network(x)
+
+ann = PowerPlantANN(input_dim=X_train.shape[1]).to(DEVICE)
+
+total_params     = sum(p.numel() for p in ann.parameters())
+trainable_params = sum(p.numel() for p in ann.parameters() if p.requires_grad)
+
+print(ann)
+print(f'\nTotal Parameters     : {total_params:,}')
+print(f'Trainable Parameters : {trainable_params:,}')
+
+---
+## Section 6: Training the ANN
+
+Training loop with:
+- Mini-batch gradient descent (batch size = 64)
+- Forward propagation -> Loss computation -> Backpropagation -> Weight update
+- Validation after every epoch
+- Best model checkpoint saved automatically
+- Early stopping to avoid overfitting
+# ── Hyperparameters ───────────────────────────────────────────────────────────
+EPOCHS    = 500
+LR        = 0.001
+PATIENCE  = 30
+MODEL_DIR = 'models'
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+criterion = nn.MSELoss()
+optimizer = optim.Adam(ann.parameters(), lr=LR, weight_decay=1e-4)
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.3, patience=15)
+
+# ── Training Loop ─────────────────────────────────────────────────────────────
+train_losses = []
+val_losses   = []
+lr_history   = []
+
+best_val_loss    = float('inf')
+best_epoch       = 0
+patience_counter = 0
+
+print(f'Training on: {DEVICE}')
+print(f'{"Epoch":>6}  {"Train Loss":>12}  {"Val Loss":>12}  {"LR":>10}')
+print('-' * 50)
+
+for epoch in range(EPOCHS):
+    # ---- Training Phase ----
+    ann.train()
+    running_train = 0.0
+    for xb, yb in train_loader:
+        xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+        optimizer.zero_grad()
+        preds = ann(xb)
+        loss  = criterion(preds, yb)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(ann.parameters(), 1.0)
+        optimizer.step()
+        running_train += loss.item()
+
+    epoch_train_loss = running_train / len(train_loader)
+    train_losses.append(epoch_train_loss)
+
+    # ---- Validation Phase ----
+    ann.eval()
+    running_val = 0.0
+    with torch.no_grad():
+        for xb, yb in val_loader:
+            xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+            preds = ann(xb)
+            loss  = criterion(preds, yb)
+            running_val += loss.item()
+
+    epoch_val_loss = running_val / len(val_loader)
+    val_losses.append(epoch_val_loss)
+
+    current_lr = optimizer.param_groups[0]['lr']
+    lr_history.append(current_lr)
+    scheduler.step(epoch_val_loss)
+
+    # Print every 25 epochs
+    if (epoch + 1) % 25 == 0 or epoch == 0:
+        print(f'{epoch+1:>6}  {epoch_train_loss:>12.4f}  {epoch_val_loss:>12.4f}  {current_lr:>10.6f}')
+
+    # ---- Early Stopping + Checkpoint ----
+    if epoch_val_loss < best_val_loss:
+        best_val_loss = epoch_val_loss
+        best_epoch    = epoch + 1
+        patience_counter = 0
+        torch.save(ann.state_dict(), os.path.join(MODEL_DIR, 'best_ann_model.pt'))
+    else:
+        patience_counter += 1
+        if patience_counter >= PATIENCE:
+            print(f'\nEarly stopping at epoch {epoch+1}. Best epoch: {best_epoch}')
+            break
+
+print(f'\nBest Validation Loss: {best_val_loss:.4f} at Epoch {best_epoch}')
+---
+## Section 7: Training Curves
+epochs_range = list(range(1, len(train_losses) + 1))
+
+fig, axes = plt.subplots(1, 2, figsize=(16, 5))
+fig.suptitle('ANN Training History', fontsize=14, fontweight='bold')
+
+# Full loss curves
+ax = axes[0]
+ax.plot(epochs_range, train_losses, color=ACCENT,  linewidth=2, label='Training Loss')
+ax.plot(epochs_range, val_losses,   color=ACCENT2, linewidth=2, label='Validation Loss')
+ax.axvline(x=best_epoch, color='white', linestyle='--', linewidth=1.2, alpha=0.6, label=f'Best Epoch: {best_epoch}')
+ax.set_title('Training & Validation Loss')
+ax.set_xlabel('Epoch')
+ax.set_ylabel('MSE Loss')
+ax.legend()
+ax.grid(True, alpha=0.3)
+
+# Convergence zoom (skip first 30% of epochs)
+ax = axes[1]
+start = len(train_losses) // 3
+ax.plot(epochs_range[start:], train_losses[start:], color=ACCENT,  linewidth=2, label='Training Loss')
+ax.plot(epochs_range[start:], val_losses[start:],   color=ACCENT2, linewidth=2, label='Validation Loss')
+ax.set_title('Loss Convergence (Zoomed)')
+ax.set_xlabel('Epoch')
+ax.set_ylabel('MSE Loss')
+ax.legend()
+ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('assets/training_curves.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')
+plt.show()
+
+# Learning rate plot
+fig, ax = plt.subplots(figsize=(10, 4))
+ax.plot(epochs_range, lr_history, color='#34d399', linewidth=2)
+ax.fill_between(epochs_range, lr_history, alpha=0.1, color='#34d399')
+ax.set_title('Learning Rate Schedule (ReduceLROnPlateau)', fontweight='bold')
+ax.set_xlabel('Epoch')
+ax.set_ylabel('Learning Rate')
+ax.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
+---
+## Section 8: ANN Evaluation on Test Set
+# Load best checkpoint
+ann.load_state_dict(torch.load(os.path.join(MODEL_DIR, 'best_ann_model.pt'), weights_only=True))
+ann.eval()
+
+with torch.no_grad():
+    test_preds = ann(X_test_t.to(DEVICE)).cpu().numpy().flatten()
+
+y_test_np = y_test.values
+
+ann_mae  = mean_absolute_error(y_test_np, test_preds)
+ann_mse  = mean_squared_error(y_test_np, test_preds)
+ann_rmse = np.sqrt(ann_mse)
+ann_r2   = r2_score(y_test_np, test_preds)
+ann_mape = np.mean(np.abs((y_test_np - test_preds) / y_test_np)) * 100
+
+print('=== ANN Test Set Results ===')
+print(f'MAE   : {ann_mae:.4f} MW')
+print(f'MSE   : {ann_mse:.4f}')
+print(f'RMSE  : {ann_rmse:.4f} MW')
+print(f'R2    : {ann_r2:.4f}')
+print(f'MAPE  : {ann_mape:.2f}%')
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+fig.suptitle('ANN Model Evaluation — Test Set', fontsize=14, fontweight='bold')
+
+# 1. Actual vs Predicted
+ax = axes[0]
+ax.scatter(y_test_np, test_preds, alpha=0.3, s=8, color=ACCENT)
+mn, mx = y_test_np.min(), y_test_np.max()
+ax.plot([mn, mx], [mn, mx], 'w--', linewidth=1.5, label='Perfect Fit')
+ax.set_title(f'Actual vs Predicted  (R2={ann_r2:.4f})')
+ax.set_xlabel('Actual PE (MW)')
+ax.set_ylabel('Predicted PE (MW)')
+ax.legend()
+ax.grid(True, alpha=0.3)
+
+# 2. Residuals
+residuals = y_test_np - test_preds
+ax = axes[1]
+ax.scatter(test_preds, residuals, alpha=0.3, s=8, color=ACCENT2)
+ax.axhline(0, color='white', linewidth=1.5, linestyle='--')
+ax.set_title('Residual Plot')
+ax.set_xlabel('Predicted PE (MW)')
+ax.set_ylabel('Residual (Actual - Predicted)')
+ax.grid(True, alpha=0.3)
+
+# 3. Residual Distribution
+ax = axes[2]
+ax.hist(residuals, bins=40, color=ACCENT, alpha=0.8, edgecolor='none')
+ax.axvline(0, color='white', linewidth=1.5, linestyle='--')
+ax.set_title('Residual Distribution')
+ax.set_xlabel('Residual')
+ax.set_ylabel('Count')
+ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('assets/ann_evaluation.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')
+plt.show()
+---
+## Section 9: ML Model Comparison
+
+Comparing the ANN against classical ML models using the same train/test splits and evaluation metrics.
+def eval_metrics(y_true, y_pred, name):
+    mae  = mean_absolute_error(y_true, y_pred)
+    mse  = mean_squared_error(y_true, y_pred)
+    rmse = np.sqrt(mse)
+    r2   = r2_score(y_true, y_pred)
+    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+    print(f'{name:<25} MAE={mae:.4f}  RMSE={rmse:.4f}  R2={r2:.4f}  MAPE={mape:.2f}%')
+    return {'MAE': mae, 'MSE': mse, 'RMSE': rmse, 'R2': r2, 'MAPE': mape}
+
+
+results = {'ANN (PyTorch)': eval_metrics(y_test_np, test_preds, 'ANN (PyTorch)')}
+
+print('\nTraining comparison models...')
+
+# 1. Linear Regression
+lr_model = LinearRegression().fit(X_train, y_train)
+results['Linear Regression'] = eval_metrics(y_test.values, lr_model.predict(X_test), 'Linear Regression')
+
+# 2. SVR (requires scaling)
+svr_model = SVR(kernel='rbf', C=100, epsilon=0.1).fit(X_train_s, y_train)
+results['SVR (RBF)'] = eval_metrics(y_test.values, svr_model.predict(X_test_s), 'SVR (RBF)')
+
+# 3. Random Forest
+rf_model = RandomForestRegressor(n_estimators=200, random_state=SEED, n_jobs=-1, oob_score=True).fit(X_train, y_train)
+results['Random Forest'] = eval_metrics(y_test.values, rf_model.predict(X_test), 'Random Forest')
+print(f'  OOB Score: {rf_model.oob_score_:.4f}')
+
+# 4. XGBoost
+xgb_model = XGBRegressor(n_estimators=1000, learning_rate=0.05, max_depth=4, random_state=SEED, verbosity=0).fit(X_train, y_train)
+results['XGBoost'] = eval_metrics(y_test.values, xgb_model.predict(X_test), 'XGBoost')
+
+best_model = max(results, key=lambda k: results[k]['R2'])
+print(f'\nBest Model: {best_model}  (R2={results[best_model]["R2"]:.4f})')
+# Formatted comparison table
+results_df = pd.DataFrame(results).T.round(4)
+results_df.index.name = 'Model'
+results_df = results_df.rename(columns={'MAPE': 'MAPE (%)'})
+results_df
+# Comparison Bar Charts
+model_names = list(results.keys())
+fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+fig.suptitle('Model Performance Comparison — Test Set', fontsize=14, fontweight='bold')
+
+metrics_to_plot = [
+    ('R2',   'R2 Score (Higher is Better)',   True),
+    ('MAE',  'Mean Absolute Error (Lower is Better)',  False),
+    ('RMSE', 'Root Mean Squared Error (Lower is Better)', False),
+]
+
+for i, (metric, title, higher_better) in enumerate(metrics_to_plot):
+    ax = axes[i]
+    vals = [results[m][metric] for m in model_names]
+    
+    if higher_better:
+        best_idx = np.argmax(vals)
+    else:
+        best_idx = np.argmin(vals)
+    
+    colors = [ACCENT2 if j == best_idx else ACCENT for j in range(len(model_names))]
+    bars = ax.bar(model_names, vals, color=colors, edgecolor='none', alpha=0.85)
+    
+    ax.bar_label(bars, labels=[f'{v:.4f}' for v in vals], padding=3, fontsize=9, color='white')
+    ax.set_title(title, fontsize=10, fontweight='bold')
+    ax.set_ylabel(metric)
+    ax.tick_params(axis='x', rotation=20)
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    if higher_better:
+        ax.set_ylim([min(vals) - 0.03, 1.0])
+
+plt.tight_layout()
+plt.savefig('assets/model_comparison.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')
+plt.show()
+# Feature Importance from Random Forest
+feat_imp = pd.Series(rf_model.feature_importances_, index=X.columns).sort_values(ascending=True)
+
+fig, ax = plt.subplots(figsize=(8, 4))
+bars = ax.barh(feat_imp.index, feat_imp.values, color=PALETTE[:len(feat_imp)], alpha=0.85)
+ax.bar_label(bars, labels=[f'{v:.4f}' for v in feat_imp.values], padding=4, color='white')
+ax.set_title('Feature Importance (Random Forest)', fontweight='bold')
+ax.set_xlabel('Importance Score')
+ax.grid(True, alpha=0.3, axis='x')
+plt.tight_layout()
+plt.savefig('assets/feature_importance.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')
+plt.show()
+
+print(feat_imp.sort_values(ascending=False))
+## Section 10: SHAP Value Analysis — Model Explainability\n\nUsing SHAP (SHapley Additive exPlanations) to interpret the XGBoost model's feature importance and how individual features contribute to the final energy output predictions.
+import shap\n\n# Initialize TreeExplainer for XGBoost\nexplainer = shap.TreeExplainer(xgb_model)\nshap_values = explainer.shap_values(X_test)\n\nfig = plt.figure(figsize=(10, 6))\nshap.summary_plot(shap_values, X_test, feature_names=X.columns, show=False)\nplt.savefig('assets/shap_beeswarm.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')\nplt.show()\n\nfig = plt.figure(figsize=(8, 4))\nshap.summary_plot(shap_values, X_test, plot_type='bar', feature_names=X.columns, show=False)\nplt.savefig('assets/shap_importance.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')\nplt.show()\n\n# Single feature waterfall plot for the first test instance\nexplainer_waterfall = shap.Explainer(xgb_model)\nshap_values_obj = explainer_waterfall(X_test)\n\nfig = plt.figure(figsize=(8, 4))\nshap.plots.waterfall(shap_values_obj[0], show=False)\nplt.savefig('assets/shap_waterfall.png', dpi=150, bbox_inches='tight', facecolor='#0d1117')\nplt.show()\n
+**SHAP Explanation:**\n- **Beeswarm Plot**: Shows the distribution of SHAP values for each feature. Features like Temperature (AT) strongly negatively impact Energy Output when their value is high (shown in red).\n- **Bar Plot**: Confirms AT is the most important feature globally by mean absolute SHAP value.\n- **Waterfall Plot**: Deconstructs a single prediction, demonstrating exactly how each feature pushes the predicted value up or down from the baseline.
+---
+## Section 11: Conclusions & Business Insights
+
+### Model Performance Summary
+
+| Model | R2 | RMSE | MAPE |
+|-------|----|---------|---------|
+| ANN (PyTorch) | >0.95 | ~3.5 MW | ~0.60% |
+| Linear Regression | 0.93 | ~4.5 MW | 0.79% |
+| SVR (RBF) | 0.95 | ~3.7 MW | 0.63% |
+| Random Forest | 0.97 | ~3.1 MW | 0.51% |
+| **XGBoost** | **0.97** | **~3.0 MW** | **0.50%** |
+
+### Key Findings
+
+1. **XGBoost wins** with R2=0.97 and MAPE=0.50% — excellent for a 4-feature problem
+2. **Temperature (AT)** is the most influential feature (negative correlation with PE)
+3. **ANN (PyTorch)** achieves competitive MAPE (1.78%) but lower R2 — a deeper or tuned architecture could improve this
+4. **All models** outperform the baseline significantly (null model RMSE ≈ 17 MW)
+5. **Exhaust Vacuum (V)** has the second highest negative correlation — higher vacuum reduces turbine efficiency
+
+### Business Value
+
+An RMSE of ~3 MW on an average output of ~454 MW translates to **<1% prediction error**, which is useful for:
+- **Grid scheduling:** Planning electricity dispatch more accurately
+- **Maintenance planning:** Detecting anomalies when actual output deviates from predictions
+- **Efficiency optimization:** Identifying optimal ambient conditions for maximum output
+
+### Future Improvements
+
+- Hyperparameter optimization (Optuna/Ray Tune) for the ANN
+- Feature engineering: interaction terms (AT * V), polynomial features
+- Time-series aware splitting if temporal structure exists
+- Ensemble: XGBoost + ANN stacking
+- SHAP values for deeper model explainability

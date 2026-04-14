@@ -409,7 +409,11 @@ def predict(model, scaler, at, v, ap, rh):
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 def main():
     if not os.path.exists("models/best_ann_model.pt"):
-        st.error("Model artifacts not found. Please run `python train.py` first.")
+        st.error("""
+        ⚠️ Model files not found. Please run `python train.py` first to 
+        generate the trained model artifacts in the `models/` directory.
+        See README.md for setup instructions.
+        """)
         st.stop()
 
     model    = load_model()
@@ -718,6 +722,26 @@ def main():
             style_fig(fig_fi, height=320)
             st.plotly_chart(fig_fi, use_container_width=True)
 
+        shap_imp = metadata.get("shap_importance", {})
+        if shap_imp:
+            sec("SHAP Feature Importance — XGBoost")
+            sn = list(shap_imp.keys())
+            sv = list(shap_imp.values())
+            fig_shap = go.Figure(data=[go.Bar(
+                x=sv, y=sn, orientation="h",
+                marker=dict(color=sv, colorscale=[[0,"#312e81"],[1,"#6366f1"]],
+                            opacity=0.9, line=dict(color="rgba(255,255,255,0.08)", width=1)),
+                text=[f"{v:.4f}" for v in sv], textposition="outside",
+                textfont=dict(color="rgba(255,255,255,0.6)"),
+            )])
+            fig_shap.update_layout(
+                title="Mean Absolute SHAP Values (XGBoost)",
+                xaxis_title="Mean |SHAP Value|",
+                yaxis=dict(autorange="reversed"),
+            )
+            style_fig(fig_shap, height=320)
+            st.plotly_chart(fig_shap, use_container_width=True)
+
     # ═══════════════════ TAB 3: Training History ══════════════════════════════
     with tab3:
         history     = metadata.get("training_history", {})
@@ -795,9 +819,10 @@ def main():
 PowerPlantANN — Architecture Summary
 =====================================
 Input Layer     : 4 features (AT, V, AP, RH)
-Hidden Layer 1  : Linear(4 → 128) + BatchNorm1d + ReLU + Dropout(0.2)
-Hidden Layer 2  : Linear(128 → 64) + BatchNorm1d + ReLU + Dropout(0.2)
-Hidden Layer 3  : Linear(64 → 32) + ReLU
+Hidden Layer 1  : Linear(4 → 256) + BatchNorm1d + LeakyReLU + Dropout(0.15)
+Hidden Layer 2  : Linear(256 → 128) + BatchNorm1d + LeakyReLU + Dropout(0.15)
+Hidden Layer 3  : Linear(128 → 64) + BatchNorm1d + LeakyReLU + Dropout(0.15)
+Hidden Layer 4  : Linear(64 → 32) + BatchNorm1d + LeakyReLU + Dropout(0.15)
 Output Layer    : Linear(32 → 1) — Energy Output (MW)
 
 ────────────────────────────────────────
@@ -906,7 +931,8 @@ Best Epoch        : {arch.get("best_epoch", "N/A")}
                 border-top:1px solid rgba(255,255,255,0.05);">
         <p style="color:rgba(255,255,255,0.2);font-size:0.78rem;margin:0;letter-spacing:0.5px;">
             Power Plant Energy Predictor &nbsp;|&nbsp;
-            Built with PyTorch &amp; Streamlit &nbsp;|&nbsp;
+            Built by Kabir Patil &nbsp;|&nbsp;
+            PyTorch &amp; Streamlit &nbsp;|&nbsp;
             UCI CCPP Dataset
         </p>
     </div>
